@@ -1,51 +1,161 @@
-import { error, json } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { user } from '$lib/server/db/schema';
 import { db } from '$lib/server/db';
+import { csvUploads, kpiMetrics, kpiData, kpiCategories } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 
-/* this should handle the uploaded csv files */
+type ChartType = 'line' | 'bar' | 'pie' | 'area' | 'scatter';
+
+// Define recommended chart types for different metric patterns
+const METRIC_PATTERNS = {
+    time_series: ['revenue', 'users', 'growth', 'traffic', 'sales', 'spend', 'cost'],
+    comparison: ['conversion', 'rate', 'ratio', 'distribution'],
+    composition: ['share', 'breakdown', 'composition', 'percentage'],
+    correlation: ['correlation', 'relationship', 'versus', 'against']
+};
+
+function determineChartType(metricName: string, categoryName: string): ChartType {
+    const normalizedMetric = metricName.toLowerCase();
+    const normalizedCategory = categoryName.toLowerCase();
+
+    // Time-based metrics usually work best with line charts
+    if (METRIC_PATTERNS.time_series.some(pattern => 
+        normalizedMetric.includes(pattern) || normalizedCategory.includes(pattern))) {
+        return 'line';
+    }
+
+    // Comparison metrics work well with bar charts
+    if (METRIC_PATTERNS.comparison.some(pattern => 
+        normalizedMetric.includes(pattern) || normalizedCategory.includes(pattern))) {
+        return 'bar';
+    }
+
+    // Composition metrics are suited for pie charts
+    if (METRIC_PATTERNS.composition.some(pattern => 
+        normalizedMetric.includes(pattern) || normalizedCategory.includes(pattern))) {
+        return 'pie';
+    }
+
+    // Correlation metrics work best with scatter plots
+    if (METRIC_PATTERNS.correlation.some(pattern => 
+        normalizedMetric.includes(pattern) || normalizedCategory.includes(pattern))) {
+        return 'scatter';
+    }
+
+    // Default to line chart for time-series data
+    return 'line';
+}
+
+interface DataPoint {
+    date: number;
+    value: number;
+    notes?: string;
+}
+
+interface RequestData {
+    upload: {
+        fileName: string;
+        description?: string;
+        userId: number;
+    };
+    category: {
+        name: string;
+        description?: string;
+    };
+    metric: {
+        name: string;
+        description?: string;
+        unit?: string;
+        preferredChartType?: ChartType;  // Optional override for chart type
+    };
+    dataPoints: DataPoint[];
+}
 
 export const POST: RequestHandler = async ({ request }) => {
-
-    /* retrieve all data for users */
     try {
+        const data: RequestData = await request.json();
+        
+        // Expected data structure from Postman:
+        // {
+        //     "upload": {
+        //         "fileName": "string",
+        //         "description": "string",
+        //         "userId": number
+        //     },
+        //     "category": {
+        //         "name": "string",
+        //         "description": "string"
+        //     },
+        //     "metric": {
+        //         "name": "string",
+        //         "description": "string",
+        //         "unit": "string"
+        //     },
+        //     "dataPoints": [
+        //         {
+        //             "date": number,
+        //             "value": number,
+        //             "notes": "string"
+        //         }
+        //     ]
+        // }
 
-        const body = await request.json();
-        const { fname, lname, email, role, password } = body;
+        // Store upload metadata
+        const [uploadRecord] = await db.insert(csvUploads)
+            .values({
+                ...data.upload,
+                uploadDate: Date.now()
+            })
+            .returning();
 
-        const user = {
-         fname,
-         lname,
-         email,
-         role,
-         password   
+        // Check if category exists first
+        let categoryRecord = await db.query.kpiCategories.findFirst({
+            where: eq(kpiCategories.name, data.category.name)
+        });
+
+        // If category doesn't exist, create it
+        if (!categoryRecord) {
+            [categoryRecord] = await db.insert(kpiCategories)
+                .values(data.category)
+                .returning();
         }
 
-        /* const existingUser = await db.select().from(user).where(eq(user.email, email)).limit(1);
+        // Determine the best chart type for this metric
+        const suggestedChartType = determineChartType(data.metric.name, data.category.name);
+        const chartType = data.metric.preferredChartType || suggestedChartType;
 
-        if (existingUser.length === 0  existingUser[0].password !== password) {
-            throw error(401, 'Invalid email or password');
-        } */
+        // Store metric with chart type
+        const [metricRecord] = await db.insert(kpiMetrics)
+            .values({
+                ...data.metric,
+                categoryId: categoryRecord.id,
+                chartType
+            })
+            .returning();
 
-        const GetUsers = await db.select(user).from   
+        // Store data points
+        const dataPointsWithRefs = data.dataPoints.map((point: DataPoint) => ({
+            ...point,
+            uploadId: uploadRecord.id,
+            metricId: metricRecord.id
+        }));
 
-        const existingEmail = await db.select().from(user).where(eq(user.email, email)).limit(1);
-        if(existingEmail.length === 0){
-            console.log('Email is already registered!');
-        }
-        const newUser = await db.insert(user).values({fname, lname, role, email, password});
+        await db.insert(kpiData).values(dataPointsWithRefs);
 
         return json({
-            message: 'Registration Successful!',
-            data: newUser
-            /* user: {
-                id: existingUser[0].id,
-                email: existingUser[0].email
-            } */
+            message: 'Data stored successfully',
+            uploadId: uploadRecord.id,
+            metricId: metricRecord.id,
+            categoryId: categoryRecord.id,
+            chartType,
+            suggestedChartType
         });
-    } catch (err) {
-        console.error('register error:', err);
-        throw error(500, 'Failed to register');
+
+    } catch (err: any) {
+        console.error('Error:', err);
+        return json({ 
+            error: err.message || 'Failed to store data',
+            details: err.code === 'SQLITE_CONSTRAINT_UNIQUE' ? 'A record with this name already exists' : undefined
+        }, { status: 500 });
     }
 };

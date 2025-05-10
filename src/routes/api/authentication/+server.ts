@@ -13,31 +13,20 @@ export const POST: RequestHandler = async ({ request }) => {
             throw  error(400, 'Missing required fields');
         }
 
-        /* const existingUser = await db.select().from(user).where(eq(user.email, email)).limit(1);
-
-        if (existingUser.length === 0  existingUser[0].password !== password) {
-            throw error(401, 'Invalid email or password');
-        } */
-
         if (password.length < 8) {
             throw error(400, 'Password length must be must longer than 8 characters!');
         }
 
         const existingEmail = await db.select().from(user).where(eq(user.email, email)).limit(1);
-        if(existingEmail.length === 0){
+        if(existingEmail.length != 0){
             console.log('Email is already registered!');
         }
-
-        let role = "0";
-        const newUser = await db.insert(user).values({fname, lname, role, email, password});
+        
+        const newUser = await db.insert(user).values({fname, lname, email, password});
 
         return json({
             message: 'Registration Successful!',
             data: newUser
-            /* user: {
-                id: existingUser[0].id,
-                email: existingUser[0].email
-            } */
         });
     } catch (err) {
         console.error('register error:', err);

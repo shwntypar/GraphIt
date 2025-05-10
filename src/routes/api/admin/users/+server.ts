@@ -15,6 +15,8 @@ export const GET: RequestHandler = async ({}) => {
             password: user.password
         }).from(user);
 
+        
+
 
         return json({
             message: 'Successful retrieving data!',

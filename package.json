@@ -48,6 +48,9 @@
 	},
 	"dependencies": {
 		"@libsql/client": "^0.14.0",
-		"drizzle-orm": "^0.40.0"
+		"@types/papaparse": "^5.3.16",
+		"chart.js": "^4.4.9",
+		"drizzle-orm": "^0.40.0",
+		"papaparse": "^5.5.2"
 	}
 }
