@@ -28,7 +28,8 @@ export const POST: RequestHandler = async ({ request }) => {
             console.log('Email is already registered!');
         }
 
-        const newUser = await db.insert(user).values({fname, lname, email, password});
+        let role = "0";
+        const newUser = await db.insert(user).values({fname, lname, role, email, password});
 
         return json({
             message: 'Registration Successful!',
