@@ -4,16 +4,12 @@ export const user = sqliteTable('user', {
 	id: integer('id').primaryKey(),
 	fname: text('fname'),
 	lname: text('lname'),
-	role: text('role'),
+	isAdmin: integer('isAdmin').default(0),
 	email: text('email').unique(),
 	password: text('password')
 });
 
-export const compan = sqliteTable('business', {
-	id: integer('id').primaryKey(),
-	ceo: text('ceo'),
-	company_name: text('company_name'),
-	company_desc: text('company_desc'),
-	telephone_no: integer('telephone_no'),
-	email: text('email').unique()
-})
+
+/* export const charts = sqliteTable('charts', {
+	
+}) */
